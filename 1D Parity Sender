@@ -1,0 +1,207 @@
+#include <stdio.h>
+#include <string.h>
+
+#define MAX_STR 100
+#define MAX_BINARY 1000
+#define MAX_FRAMES 200
+
+/* Global Variables */
+char str[MAX_STR];
+char binary[MAX_BINARY];
+
+char dataBlock[MAX_FRAMES][8];      // 7-bit data
+char parityFrame[MAX_FRAMES][9];    // 8-bit frame
+char parityBit[MAX_FRAMES];         // Added parity bit
+
+int binaryLength;
+int totalFrames;
+
+/* Function Prototypes */
+void getInputFromFile();
+void convertToBinary();
+void countFrames();
+void generateFrames();
+void displayBinary();
+void displayFrames();
+void writeFramesToFile();
+
+/* Read String from File */
+void getInputFromFile()
+{
+    FILE *fp;
+
+    fp = fopen("even.txt", "r");
+
+    if (fp == NULL)
+    {
+        printf("Error: Unable to open input.txt\n");
+        return;
+    }
+
+    fgets(str, MAX_STR, fp);
+    fclose(fp);
+
+    str[strcspn(str, "\n")] = '\0';
+
+    printf("Input String : %s\n", str);
+}
+
+/* Convert Input String into Continuous 7-bit Binary */
+void convertToBinary()
+{
+    int i;
+    int j;
+    int k;
+    unsigned char ch;
+
+    k = 0;
+
+    for (i = 0; str[i] != '\0'; i++)
+    {
+        ch = str[i];
+
+        for (j = 6; j >= 0; j--)
+        {
+            binary[k++] = ((ch >> j) & 1) + '0';
+        }
+    }
+
+    binary[k] = '\0';
+}
+
+/* Count Number of Frames */
+void countFrames()
+{
+    binaryLength = strlen(binary);
+    totalFrames = (binaryLength + 6) / 7;
+}
+
+/* Generate Even Parity Frames */
+void generateFrames()
+{
+    int i;
+    int j;
+    int index;
+    int ones;
+    char parity;
+
+    index = 0;
+
+    for (i = 0; i < totalFrames; i++)
+    {
+        ones = 0;
+
+        /* Copy 7 Bits */
+        for (j = 0; j < 7; j++)
+        {
+            if (index < binaryLength)
+                dataBlock[i][j] = binary[index++];
+            else
+                dataBlock[i][j] = '0';      /* Padding */
+
+            if (dataBlock[i][j] == '1')
+                ones++;
+        }
+
+        dataBlock[i][7] = '\0';
+
+        /* Generate Even Parity */
+        if (ones % 2 == 0)
+            parity = '0';
+        else
+            parity = '1';
+
+        parityBit[i] = parity;
+
+        /* Add Parity as MSB */
+        parityFrame[i][0] = parity;
+
+        for (j = 0; j < 7; j++)
+            parityFrame[i][j + 1] = dataBlock[i][j];
+
+        parityFrame[i][8] = '\0';
+    }
+}
+
+/* Display Complete Binary Stream */
+void displayBinary()
+{
+    printf("\nComplete Binary Stream :\n");
+    printf("%s\n", binary);
+
+    printf("\nTotal Binary Bits      : %d", binaryLength);
+    printf("\nTotal Number of Frames : %d\n", totalFrames);
+}
+
+/* Display Frames */
+void displayFrames()
+{
+    int i;
+
+    printf("\n=====================================================================\n");
+    printf("%-8s %-15s %-15s %-15s\n",
+           "Frame",
+           "7-bit Data",
+           "Added 8th Bit",
+           "8-bit Frame");
+    printf("=====================================================================\n");
+
+    for (i = 0; i < totalFrames; i++)
+    {
+        printf("%-8d %-15s %-15c %-15s\n",
+               i + 1,
+               dataBlock[i],
+               parityBit[i],
+               parityFrame[i]);
+    }
+
+    printf("=====================================================================\n");
+}
+
+/* Write Frames into File */
+void writeFramesToFile()
+{
+    FILE *fp;
+    int i;
+
+    fp = fopen("esend.txt", "w");
+
+    if (fp == NULL)
+    {
+        printf("Error: Unable to create channel.dat\n");
+        return;
+    }
+
+    /* Write Total Number of Frames */
+    fprintf(fp, "%d\n", totalFrames);
+
+    /* Write Each 8-bit Frame */
+    for (i = 0; i < totalFrames; i++)
+    {
+        fprintf(fp, "%s\n", parityFrame[i]);
+    }
+
+    fclose(fp);
+
+    printf("\nFrames successfully written to esend.txt\n");
+}
+
+/* Main Function */
+int main()
+{
+    getInputFromFile();
+
+    convertToBinary();
+
+    countFrames();
+
+    generateFrames();
+
+    displayBinary();
+
+    displayFrames();
+
+    writeFramesToFile();
+
+    return 0;
+}
