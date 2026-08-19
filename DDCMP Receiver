@@ -1,0 +1,152 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+char binaryToChar(char *bin)
+{
+    int i, val = 0;
+    for(i = 0; i < 8; i++)
+    {
+        val = val << 1;
+        if(bin[i] == '1')
+            val = val | 1;
+    }
+    return (char)val;
+}
+
+int extractCount(FILE *fin)
+{
+    char line[300];
+    int count = -1;
+
+    rewind(fin);
+    while(fgets(line, sizeof(line), fin) != NULL)
+    {
+        if(strncmp(line, "No. of bytes in Body :", 22) == 0)
+        {
+            sscanf(line, "No. of bytes in Body : %d", &count);
+            break;
+        }
+    }
+    return count;
+}
+int extractBody(FILE *fin, char binaries[][9])
+{
+    char line[300];
+    int found = 0;
+    int inBody = 0;
+
+    rewind(fin);
+    while(fgets(line, sizeof(line), fin) != NULL)
+    {
+        if(strncmp(line, "Body (Character : Binary)", 25) == 0)
+        {
+            inBody = 1;
+            continue;
+        }
+        if(inBody)
+        {
+
+            if(line[0] == '\n' || line[0] == '\r')
+                break;
+
+            char *sep = strstr(line, " : ");
+            if(sep != NULL)
+            {
+                strncpy(binaries[found], sep + 3, 8);
+                binaries[found][8] = '\0';
+                found++;
+            }
+        }
+    }
+    return found;
+}
+
+int main()
+{
+    char filename[100];
+    FILE *fin, *fout;
+    int declaredCount;
+    int actualBytes;
+    int simulateError, corruption;
+    char binaries[1000][9];
+    int i;
+
+    printf("Enter received frame file name (e.g. sender_output.txt): ");
+    scanf("%s", filename);
+
+    fin = fopen(filename, "r");
+    if(fin == NULL)
+    {
+        printf("Error: cannot open frame file %s\n", filename);
+        return 1;
+    }
+
+    declaredCount = extractCount(fin);
+    if(declaredCount == -1)
+    {
+        printf("Error: Count field not found in frame\n");
+        fclose(fin);
+        return 1;
+    }
+
+    actualBytes = extractBody(fin, binaries);
+    fclose(fin);
+
+    printf("Count field read from frame : %d\n", declaredCount);
+    printf("Do you want to simulate a corrupted Count field? (1 = yes, 0 = no): ");
+    scanf("%d", &simulateError);
+
+    if(simulateError)
+    {
+        printf("Enter a corruption offset to add/subtract from Count (e.g. 3 or -2): ");
+        scanf("%d", &corruption);
+        declaredCount += corruption;
+        if(declaredCount < 0)
+            declaredCount = 0;
+    }
+
+    fout = fopen("rec_output.txt", "w");
+    if(fout == NULL)
+    {
+        printf("Error creating output file\n");
+        return 1;
+    }
+
+    fprintf(fout, "================== DDCMP FRAME (RECEIVER SIDE) ==================\n\n");
+    fprintf(fout, "Count field says   : %d bytes\n", declaredCount);
+    fprintf(fout, "Bytes actually present in Body : %d bytes\n\n", actualBytes);
+    if(declaredCount != actualBytes)
+    {
+        fprintf(fout, "*** FRAMING ERROR ***\n");
+        fprintf(fout, "The Count field is corrupted / does not match the actual\n");
+        fprintf(fout, "number of bytes in the Body, so the receiver cannot correctly\n");
+        fprintf(fout, "determine where this frame ends and the next one begins.\n");
+
+        printf("\n*** FRAMING ERROR DETECTED ***\n");
+        printf("(Count = %d, actual body bytes = %d)\n", declaredCount, actualBytes);
+    }
+    else
+    {
+        fprintf(fout, "Count matches actual Body length - no framing error.\n\n");
+        fprintf(fout, "---------------------------- BODY ---------------------------------\n");
+        fprintf(fout, "Extracted Body (Binary : Character)\n");
+
+        for(i = 0; i < declaredCount; i++)
+            fprintf(fout, "%s : %c\n", binaries[i], binaryToChar(binaries[i]));
+
+        fprintf(fout, "\n---------------------------- MESSAGE --------------------------------\n");
+        fprintf(fout, "Reconstructed Original Message:\n");
+        for(i = 0; i < declaredCount; i++)
+            fprintf(fout, "%c", binaryToChar(binaries[i]));
+        fprintf(fout, "\n");
+
+        printf("\nFrame received correctly. Message reconstructed successfully.\n");
+    }
+
+    fclose(fout);
+
+    printf("Output written to: rec_output.txt\n");
+
+    return 0;
+}
