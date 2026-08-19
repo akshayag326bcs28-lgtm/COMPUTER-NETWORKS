@@ -1,0 +1,208 @@
+#include <stdio.h>
+#define SIZE 10
+int rows, cols;
+int data[SIZE][SIZE];
+int recvRow[SIZE];
+int recvCol[SIZE];
+int recvCorner;
+int calcRow[SIZE];
+int calcCol[SIZE];
+int calcCorner;
+void readFile()
+{
+    FILE *fp;
+    int i, j;
+    fp = fopen("channel.dat", "r");
+
+    if (fp == NULL)
+    {
+        printf("Unable to open channel.dat\n");
+        return;
+    }
+
+    fscanf(fp, "%d %d", &rows, &cols);
+
+    for (i = 0; i < rows; i++)
+    {
+        for (j = 0; j < cols; j++)
+            fscanf(fp, "%d", &data[i][j]);
+
+        fscanf(fp, "%d", &recvRow[i]);
+    }
+
+    for (j = 0; j < cols; j++)
+        fscanf(fp, "%d", &recvCol[j]);
+
+    fscanf(fp, "%d", &recvCorner);
+
+    fclose(fp);
+}
+
+void display()
+{
+    int i, j;
+
+    printf("\nReceived Block\n\n");
+
+    for (i = 0; i < rows; i++)
+    {
+        for (j = 0; j < cols; j++)
+            printf("%d ", data[i][j]);
+
+        printf("| %d\n", recvRow[i]);
+    }
+
+    for (j = 0; j < cols; j++)
+        printf("--");
+    printf("---\n");
+
+    for (j = 0; j < cols; j++)
+        printf("%d ", recvCol[j]);
+
+    printf("| %d\n", recvCorner);
+}
+
+void checkParity()
+{
+    int i, j;
+    int temp;
+    int error = 0;
+
+    int rowError = -1;
+    int colError = -1;
+    int rowCount = 0;
+    int colCount = 0;
+
+    printf("\nChecking Errors...\n\n");
+
+    /* Row Check */
+    for (i = 0; i < rows; i++)
+    {
+        temp = 0;
+
+        for (j = 0; j < cols; j++)
+            temp ^= data[i][j];
+
+        calcRow[i] = temp;
+
+        if (calcRow[i] != recvRow[i])
+        {
+            printf("Error in Row %d\n", i + 1);
+            rowError = i;
+            rowCount++;
+            error = 1;
+        }
+    }
+
+    /* Column Check */
+    for (j = 0; j < cols; j++)
+    {
+        temp = 0;
+
+        for (i = 0; i < rows; i++)
+            temp ^= data[i][j];
+
+        calcCol[j] = temp;
+
+        if (calcCol[j] != recvCol[j])
+        {
+            printf("Error in Column %d\n", j + 1);
+            colError = j;
+            colCount++;
+            error = 1;
+        }
+    }
+
+    /* Corner Check */
+    calcCorner = 0;
+
+    for (j = 0; j < cols; j++)
+        calcCorner ^= calcCol[j];
+
+    if (calcCorner != recvCorner)
+    {
+        printf("Corner parity error\n");
+        error = 1;
+    }
+
+    if (!error)
+    {
+        printf("\nNO ERROR DETECTED\n");
+        return;
+    }
+
+    printf("\nERROR DETECTED\n");
+
+    if (rowCount == 1 && colCount == 1)
+    {
+        printf("Error Position : Row %d, Column %d\n",
+               rowError + 1, colError + 1);
+
+        printf("Erroneous Bit : %d\n", data[rowError][colError]);
+
+        /* Uncomment if you want automatic correction
+
+        data[rowError][colError] ^= 1;
+
+        printf("\nBit Corrected Successfully.\n");
+
+        printf("\nCorrected Block\n\n");
+        display();
+
+        */
+    }
+    else
+    {
+        printf("Multiple-bit error detected.\n");
+        printf("Exact error position cannot be determined using 2D parity.\n");
+    }
+}
+
+void introduceError()
+{
+    int r, c;
+
+    printf("\nEnter row position to flip: ");
+    scanf("%d", &r);
+
+    printf("Enter column position to flip: ");
+    scanf("%d", &c);
+
+    if (r >= 1 && r <= rows && c >= 1 && c <= cols)
+    {
+        data[r - 1][c - 1] ^= 1;
+        printf("Bit flipped successfully\n");
+    }
+    else
+    {
+        printf("Invalid position\n");
+    }
+}
+
+int main()
+{
+    int choice;
+
+    readFile();
+
+    display();
+
+    checkParity();
+
+    printf("\nDo you want to introduce error? (1/0): ");
+    scanf("%d", &choice);
+
+    while (choice == 1)
+    {
+        introduceError();
+
+        display();
+
+        checkParity();
+
+        printf("\nFlip another bit? (1/0): ");
+        scanf("%d", &choice);
+    }
+
+    return 0;
+}
