@@ -1,0 +1,165 @@
+#include <stdio.h>
+#include <string.h>
+
+#define MAX_FRAMES 200
+
+char frames[MAX_FRAMES][9];
+int totalFrames;
+
+/* Function Prototypes */
+void readFrames();
+void displayFrames();
+void introduceError();
+void flipBit(int frameNo, int bitPos);
+void checkParity();
+
+/* Read Frames from channel.dat */
+void readFrames()
+{
+    FILE *fp;
+    int i;
+
+    fp = fopen("esend.txt", "r");
+
+    if(fp == NULL)
+    {
+        printf("Unable to open esend.txt\n");
+        return;
+    }
+
+    fscanf(fp, "%d", &totalFrames);
+
+    for(i = 0; i < totalFrames; i++)
+        fscanf(fp, "%s", frames[i]);
+
+    fclose(fp);
+}
+
+/* Display Frames */
+void displayFrames()
+{
+    int i;
+
+    printf("\nReceived Frames\n");
+    printf("---------------------------------\n");
+
+    for(i = 0; i < totalFrames; i++)
+    {
+        printf("Frame %d : %s\n", i + 1, frames[i]);
+    }
+
+    printf("---------------------------------\n");
+}
+
+/* Flip One Bit */
+void flipBit(int frameNo, int bitPos)
+{
+    if(frames[frameNo][bitPos] == '0')
+        frames[frameNo][bitPos] = '1';
+    else
+        frames[frameNo][bitPos] = '0';
+}
+
+/* Introduce Errors */
+void introduceError()
+{
+    int choice;
+    int flips;
+    int i;
+    int frameNo;
+    int bitPos;
+
+    printf("\nDo you want to introduce transmission error?");
+    printf("\n1. Yes");
+    printf("\n2. No");
+    printf("\nEnter choice : ");
+    scanf("%d",&choice);
+
+    if(choice == 2)
+        return;
+
+    printf("\nHow many bits do you want to flip? ");
+    scanf("%d",&flips);
+
+    for(i = 0; i < flips; i++)
+    {
+        printf("\nBit Flip %d\n", i + 1);
+
+        printf("Enter Frame Number (1-%d): ", totalFrames);
+        scanf("%d",&frameNo);
+
+        printf("Enter Bit Position (1-8): ");
+        scanf("%d",&bitPos);
+
+        if(frameNo < 1 || frameNo > totalFrames)
+        {
+            printf("Invalid Frame Number\n");
+            i--;
+            continue;
+        }
+
+        if(bitPos < 1 || bitPos > 8)
+        {
+            printf("Invalid Bit Position\n");
+            i--;
+            continue;
+        }
+
+        flipBit(frameNo - 1, bitPos - 1);
+    }
+
+    printf("\nFrames After Bit Flipping\n");
+    printf("---------------------------------\n");
+
+    for(i = 0; i < totalFrames; i++)
+    {
+        printf("Frame %d : %s\n", i + 1, frames[i]);
+    }
+
+    printf("---------------------------------\n");
+}
+
+/* Check Even Parity */
+void checkParity()
+{
+    int i;
+    int j;
+    int ones;
+
+    printf("\nParity Checking Result\n");
+    printf("---------------------------------\n");
+
+    for(i = 0; i < totalFrames; i++)
+    {
+        ones = 0;
+
+        for(j = 0; j < 8; j++)
+        {
+            if(frames[i][j] == '1')
+                ones++;
+        }
+
+        printf("Frame %d : ", i + 1);
+
+        if(ones % 2 == 0)
+            printf("No Error Detected\n");
+        else
+            printf("Error Detected\n");
+    }
+
+    printf("---------------------------------\n");
+}
+
+/* Main Function */
+int main()
+{
+    readFrames();
+
+    displayFrames();
+
+    introduceError();
+
+    checkParity();
+
+    return 0;
+}
