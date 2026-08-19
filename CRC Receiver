@@ -1,0 +1,193 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+void mod2Divide(char *dividend, char *divisor, char *remainder)
+{
+    char temp[4096];
+    int dataLen = strlen(dividend);
+    int genLen  = strlen(divisor);
+    int i, j;
+
+    strcpy(temp, dividend);
+
+    for(i = 0; i <= dataLen - genLen; i++)
+    {
+        if(temp[i] == '1')
+        {
+            for(j = 0; j < genLen; j++)
+            {
+                temp[i + j] = (temp[i + j] == divisor[j]) ? '0' : '1';
+            }
+        }
+    }
+    strncpy(remainder, temp + (dataLen - (genLen - 1)), genLen - 1);
+    remainder[genLen - 1] = '\0';
+}
+
+int isAllZero(char *bits)
+{
+    int i;
+    for(i = 0; bits[i] != '\0'; i++)
+    {
+        if(bits[i] != '0')
+            return 0;
+    }
+    return 1;
+}
+
+int main()
+{
+    FILE *fin;
+    char line[1024];
+    char generator[64] = "";
+
+    char headers[8][256];
+    char bodies[8][32];
+    char senderCRCs[8][64];
+    int totalFramesParsed = 0;
+
+    char synMarker[9] = "00010110";
+    char sohMarker[9] = "00000001";
+    char stxMarker[9] = "00000002";
+    char etxMarker[9] = "00000003";
+
+    char errorChoice;
+    int targetFrameNum = -1;
+    int bitPosToFlip = -1;
+
+    int i, j;
+
+
+    fin = fopen("output.txt", "r");
+    if(fin == NULL)
+    {
+        printf("Error: Could not find 'output.txt'. Ensure sender program has run successfully.\n");
+        return 1;
+    }
+
+    while(fgets(line, sizeof(line), fin) != NULL)
+    {
+
+        if(strncmp(line, "Polynomial Binary", 17) == 0)
+        {
+            char *ptr = strchr(line, ':');
+            if(ptr != NULL)
+            {
+                sscanf(ptr + 1, "%s", generator);
+            }
+        }
+
+        else if(strncmp(line, "Frame", 5) == 0)
+        {
+            int currentFrameNum = 0;
+            char hBuf[256], bBuf[32], cBuf[64];
+
+
+            int matched = sscanf(line, "Frame %d Binary -> [SYN:%*[^]]] [SYN:%*[^]]] [SOH:%*[^]]] [HEADER:%[^]]] [STX:%*[^]]] [BODY:%[^]]] [ETX:%*[^]]] [CRC:%[^]]]",
+                                 &currentFrameNum, hBuf, bBuf, cBuf);
+
+            if(matched == 4 && totalFramesParsed < 8)
+            {
+                strcpy(headers[totalFramesParsed], hBuf);
+                strcpy(bodies[totalFramesParsed], bBuf);
+                strcpy(senderCRCs[totalFramesParsed], cBuf);
+                totalFramesParsed++;
+            }
+        }
+    }
+    fclose(fin);
+
+    if(strlen(generator) == 0 || totalFramesParsed == 0)
+    {
+        printf("Error: Found incomplete data inside 'output.txt'.\n");
+        return 1;
+    }
+
+    printf("Successfully parsed frames  %d.\n", totalFramesParsed);
+    printf("Detected Generator Polynomial: %s\n\n", generator);
+
+
+    printf("Simulate a network transmission error? (y/n): ");
+    scanf(" %c", &errorChoice);
+
+    if(errorChoice == 'y' || errorChoice == 'Y')
+    {
+        printf("Enter Frame Number to corrupt (1 to %d): ", totalFramesParsed);
+        scanf("%d", &targetFrameNum);
+
+        if(targetFrameNum < 1 || targetFrameNum > totalFramesParsed)
+        {
+            printf("Invalid frame option selected.\n");
+            return 1;
+        }
+
+        int maxBitLen = (int)strlen(bodies[targetFrameNum - 1]);
+        printf("Enter bit position inside BODY to flip (1 to %d): ", maxBitLen);
+        scanf("%d", &bitPosToFlip);
+
+        if(bitPosToFlip < 1 || bitPosToFlip > maxBitLen)
+        {
+            printf("Invalid bit position .\n");
+            return 1;
+        }
+
+
+        int idxToFlip = bitPosToFlip - 1;
+        char oldBit = bodies[targetFrameNum - 1][idxToFlip];
+        bodies[targetFrameNum - 1][idxToFlip] = (oldBit == '0') ? '1' : '0';
+
+        printf("\nSuccessfully inserted bit flip at Frame.\n",
+               targetFrameNum, bitPosToFlip, oldBit, bodies[targetFrameNum - 1][idxToFlip]);
+    }
+    else
+    {
+        printf("\nNO BIT FLIPS\n");
+    }
+
+    printf("\n======================================================================\n");
+    printf("                  RECEIVER SIDE                                        \n");
+    printf("======================================================================\n");
+
+
+    for(i = 0; i < totalFramesParsed; i++)
+    {
+        char completeBitstream[1024] = "";
+        char evaluationRemainder[64] = "";
+
+
+        strcpy(completeBitstream, synMarker);
+        strcat(completeBitstream, synMarker);
+        strcat(completeBitstream, sohMarker);
+        strcat(completeBitstream, headers[i]);
+        strcat(completeBitstream, stxMarker);
+        strcat(completeBitstream, bodies[i]);
+        strcat(completeBitstream, etxMarker);
+
+        /* Append the sender's validation CRC bit pattern directly onto the bitstream */
+        strcat(completeBitstream, senderCRCs[i]);
+
+        /* Execute CRC computation over whole integrated bit sequence block */
+        mod2Divide(completeBitstream, generator, evaluationRemainder);
+
+        printf(" Frame %d: \n", i + 1);
+        printf("Parsed Body Bits : %s\n", bodies[i]);
+        printf("Appended File CRC: %s\n", senderCRCs[i]);
+        printf("Mod-2 Remainder  : %s\n", evaluationRemainder);
+
+        if(isAllZero(evaluationRemainder))
+        {
+            printf("[CORRECT] Remainder is all zero bits. Frame accepted smoothly.\n\n");
+        }
+        else
+        {
+            printf("[ERROR DETECTED] Remainder contains '1' bits! Frame dropped/rejected.\n");
+            if((errorChoice == 'y' || errorChoice == 'Y') && (i + 1 == targetFrameNum))
+            {
+                printf("[VERIFICATION SUCCESSFUL] CRC caught the insered bit-flip error.\n");
+            }
+            printf("\n");
+        }
+    }
+
+    return 0;
+}
