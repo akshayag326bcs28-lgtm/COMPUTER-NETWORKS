@@ -1,0 +1,130 @@
+#include <stdio.h>
+#define MAXSIZE 20
+int dataBits;
+int parityBits;
+int totalBits;
+int inputBits[MAXSIZE];
+int codeWord[MAXSIZE];
+int i;
+int j;
+int p;
+void readInput()
+{
+    printf("Enter number of data bits: ");
+    scanf("%d", &dataBits);
+
+    printf("Enter %d data bits (separated by spaces):\n", dataBits);
+    for(i = 0; i < dataBits; i++)
+    {
+        scanf("%d", &inputBits[i]);
+    }
+}
+
+void findParityBits()
+{
+    parityBits = 0;
+
+    while((1 << parityBits) < (dataBits + parityBits + 1))
+    {
+        parityBits++;
+    }
+
+    totalBits = dataBits + parityBits;
+
+    printf("\n---  Parity  ---\n");
+    printf("Number of parity bits : %d\n", parityBits);
+    printf("Total codeword length : %d\n", totalBits);
+}
+
+int isParityPosition(int position)
+{
+    return (position & (position - 1)) == 0;
+}
+
+void buildCodeword()
+{
+    int dataIndex = 0;
+
+    for(i = 1; i <= totalBits; i++)
+    {
+        if(isParityPosition(i))
+        {
+            codeWord[i] = 0;
+        }
+        else
+        {
+            codeWord[i] = inputBits[dataIndex];
+            dataIndex++;
+        }
+    }
+}
+
+void generateParity()
+{
+    int parityPos;
+    int parityValue;
+
+    printf("\n--- Parity Calculation (Even Parity) ---\n");
+
+    for(p = 0; p < parityBits; p++)
+    {
+        parityPos = 1 << p;
+        parityValue = 0;
+
+        printf("P%d (Position %d) checks bits at positions: ", p + 1, parityPos);
+
+
+        for(j = 1; j <= totalBits; j++)
+        {
+            if((j & parityPos) && (j != parityPos))
+            {
+                printf("%d ", j);
+                parityValue ^= codeWord[j];
+            }
+        }
+        codeWord[parityPos] = parityValue;
+        printf("-> Calculated Value = %d\n", parityValue);
+    }
+}
+void displayCodeword()
+{
+    printf("\n---  Final Output ---\n");
+    printf("Hammming Codeword:\n");
+
+    for(i = 1; i <= totalBits; i++)
+    {
+        printf("%d ", codeWord[i]);
+    }
+    printf("\n");
+}
+void writeOutputFile()
+{
+    FILE *fp;
+
+    fp = fopen("out.txt", "w");
+
+    if(fp == NULL)
+    {
+        printf("Error: Unable to create or open out.txt\n");
+        return;
+    }
+    for(i = 1; i <= totalBits; i++)
+    {
+        fprintf(fp, "%d ", codeWord[i]);
+    }
+    fprintf(fp, "\n");
+
+    fclose(fp);
+
+    printf(" Success! Hamming codeword successfully saved to 'out.txt'\n");
+}
+int main()
+{
+    readInput();
+    findParityBits();
+    buildCodeword();
+    generateParity();
+    displayCodeword();
+    writeOutputFile();
+    return 0;
+}
