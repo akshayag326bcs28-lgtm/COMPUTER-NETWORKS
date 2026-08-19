@@ -1,0 +1,287 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <time.h>
+#define MAX_WEBSITE 5
+struct AddressEntry {
+    char website[40];
+    char ipAddress[20];
+    char macAddress[20];
+};
+struct TransportPacket {
+    int sourcePort;
+    int destinationPort;
+    char sourcePortBinary[17];
+    char destinationPortBinary[17];
+};
+struct AddressEntry networkTable[MAX_WEBSITE] = {
+    {"microsoft.com","172.16.10.11","10:20:30:40:50:61"},
+    {"apple.com","172.16.10.12","10:20:30:40:50:62"},
+    {"netflix.com","172.16.10.13","10:20:30:40:50:63"},
+    {"github.com","172.16.10.14","10:20:30:40:50:64"},
+    {"linkedin.com","172.16.10.15","10:20:30:40:50:65"}
+};
+void asciiToBinary(char ch, char binary[]) {
+    int i;
+    int value = (int)ch;
+    for(i=7; i>=0; i--) {
+        binary[i] = (value % 2) ? '1' : '0';
+        value /= 2;
+    }
+    binary[8] = '\0';
+}
+void convertMessageToBinary(char message[], char binary[]) {
+    int i;
+    char temp[9];
+    strcpy(binary, "");
+    for(i=0; message[i]!='\0'; i++) {
+        asciiToBinary(message[i], temp);
+        strcat(binary, temp);
+    }
+}
+
+void decimalToBinary16(int number, char binary[]) {
+   int i;
+   for(i=15; i>=0; i--) {
+        binary[i] = (number % 2) ? '1' : '0';
+        number /= 2;
+    }
+    binary[16] = '\0';
+}
+
+void convertIPAddress(char ipAddress[], char binaryIP[]) {
+    int i=0;
+    int j=0;
+    int number=0;
+    int k;
+    char tempBinary[9];
+    while(ipAddress[i]!='\0') {
+        if(ipAddress[i]!='.') {
+            number = number*10 + (ipAddress[i]-'0');
+        } else {
+            for(k=7; k>=0; k--) {
+                tempBinary[k] = (number % 2) ? '1' : '0';
+                number /= 2;
+            }
+            for(k=0; k<8; k++) binaryIP[j++] = tempBinary[k];
+            number = 0;
+        }
+        i++;
+    }
+    for(k=7; k>=0; k--) {
+        tempBinary[k] = (number % 2) ? '1' : '0';
+        number /= 2;
+    }
+    for(k=0; k<8; k++) binaryIP[j++] = tempBinary[k];
+    binaryIP[32] = '\0';
+}
+
+void convertMACAddress(char macAddress[], char binaryMAC[]) {
+    int i;
+    int j=0;
+    int k;
+    for(i=0; macAddress[i]!='\0'; i++) {
+        if(macAddress[i]==':') continue;
+        int value;
+        if(macAddress[i]>='0' && macAddress[i]<='9') value = macAddress[i]-'0';
+        else if(macAddress[i]>='A' && macAddress[i]<='F') value = 10+(macAddress[i]-'A');
+        else if(macAddress[i]>='a' && macAddress[i]<='f') value = 10+(macAddress[i]-'a');
+        else value=0;
+        for(k=3; k>=0; k--) {
+            binaryMAC[j++] = (value % 2) ? '1' : '0';
+            value /= 2;
+        }
+    }
+    binaryMAC[48] = '\0';
+}
+
+
+int findWebsite(char website[]) {
+    int i;
+    for(i=0; i<MAX_WEBSITE; i++) {
+        if(strcmp(website, networkTable[i].website) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int generateRandomPort() {
+    return (rand() % 64512) + 1024;
+}
+
+
+void applicationLayer(char message[], char binaryMessage[]) {
+    int i;
+    char temp[9];
+    printf("\n=== APPLICATION LAYER ===\n");
+    printf("Word-wise Binary:\n");
+    for(i=0; message[i]!='\0'; i++) {
+        asciiToBinary(message[i], temp);
+        printf("%c -> %s\n", message[i], temp);
+    }
+    convertMessageToBinary(message, binaryMessage);
+    printf("Complete Binary Message: %s\n", binaryMessage);
+
+    printf("\nForm (Application Layer):\n");
+    printf("Data (binary): %s\n", binaryMessage);
+}
+
+void transportLayer(char binaryMessage[], struct TransportPacket *segment) {
+    segment->sourcePort = generateRandomPort();
+    segment->destinationPort = generateRandomPort();
+    decimalToBinary16(segment->sourcePort, segment->sourcePortBinary);
+    decimalToBinary16(segment->destinationPort, segment->destinationPortBinary);
+
+    printf("\n=== TRANSPORT LAYER ===\n");
+    printf("Source Port: %d -> %s\n", segment->sourcePort, segment->sourcePortBinary);
+    printf("Destination Port: %d -> %s\n", segment->destinationPort, segment->destinationPortBinary);
+
+    printf("\nForm (Transport Layer):\n");
+    printf("Data: %s\n", binaryMessage);
+    printf("Source Port No: %d\n", segment->sourcePort);
+    printf("Destination Port No: %d\n", segment->destinationPort);
+    printf("Binary Form: %s%s%s\n", binaryMessage, segment->sourcePortBinary, segment->destinationPortBinary);
+}
+
+void networkLayer(char binaryMessage[], struct TransportPacket segment,
+                  int sourceIndex, int destinationIndex, int packetSize) {
+    int p=0;
+    int totalBits;
+    int totalPackets;
+    char srcIP[33], dstIP[33];
+
+    convertIPAddress(networkTable[sourceIndex].ipAddress, srcIP);
+    convertIPAddress(networkTable[destinationIndex].ipAddress, dstIP);
+
+    totalBits = strlen(binaryMessage);
+    totalPackets = (totalBits + packetSize - 1) / packetSize;
+
+    printf("\n=== NETWORK LAYER ===\n");
+    printf("Source IP: %s -> %s\n", networkTable[sourceIndex].ipAddress, srcIP);
+    printf("Destination IP: %s -> %s\n", networkTable[destinationIndex].ipAddress, dstIP);
+
+    for(p=0; p<totalPackets; p++) {
+        char *packetData = (char *)malloc(packetSize + 1);
+        int start = p * packetSize;
+        int len = (totalBits - start >= packetSize) ? packetSize : totalBits - start;
+        strncpy(packetData, binaryMessage + start, len);
+        packetData[len] = '\0';
+        printf("\nPacket %d:\n", p + 1);
+        printf("Data Segment: %s\n", packetData);
+        free(packetData);
+    }
+    printf("\nTotal Packets Generated: %d\n", totalPackets);
+
+    printf("\nForm (Network Layer):\n");
+    printf("Binary Form: %s%s%s%s%s\n", binaryMessage, segment.sourcePortBinary, segment.destinationPortBinary, srcIP, dstIP);
+}
+
+void dataLinkLayer(char binaryMessage[], struct TransportPacket segment,
+                   int sourceIndex, int destinationIndex) {
+    char srcIP[33], dstIP[33];
+    char srcMAC[49], dstMAC[49];
+    convertIPAddress(networkTable[sourceIndex].ipAddress, srcIP);
+    convertIPAddress(networkTable[destinationIndex].ipAddress, dstIP);
+    convertMACAddress(networkTable[sourceIndex].macAddress, srcMAC);
+    convertMACAddress(networkTable[destinationIndex].macAddress, dstMAC);
+
+    printf("\n=== DATA LINK LAYER ===\n");
+    printf("Source MAC: %s -> %s\n", networkTable[sourceIndex].macAddress, srcMAC);
+    printf("Destination MAC: %s -> %s\n", networkTable[destinationIndex].macAddress, dstMAC);
+
+    printf("\nForm (Data Link Layer):\n");
+    printf("Binary Form: %s%s%s%s%s%s%s\n", binaryMessage, segment.sourcePortBinary, segment.destinationPortBinary, srcIP, dstIP, srcMAC, dstMAC);
+}
+
+void displaySummary(char binaryMessage[], struct TransportPacket segment,
+                    int sourceIndex, int destinationIndex, int packetSize, int frameSize) {
+    char srcIP[33], dstIP[33];
+    char srcMAC[49], dstMAC[49];
+
+    int totalBits;
+    int sourceBits;
+    int destinationBits;
+    int totalPackets;
+    int totalFrames;
+    int paddingBits;
+    int bitsRemaining;
+
+    convertIPAddress(networkTable[sourceIndex].ipAddress, srcIP);
+    convertIPAddress(networkTable[destinationIndex].ipAddress, dstIP);
+    convertMACAddress(networkTable[sourceIndex].macAddress, srcMAC);
+    convertMACAddress(networkTable[destinationIndex].macAddress, dstMAC);
+
+    totalBits = strlen(binaryMessage);
+    sourceBits = strlen(segment.sourcePortBinary) + strlen(srcIP) + strlen(srcMAC);
+    destinationBits = strlen(segment.destinationPortBinary) + strlen(dstIP) + strlen(dstMAC);
+
+    totalPackets = (totalBits + packetSize - 1) / packetSize;
+
+    totalFrames = 0;
+    bitsRemaining = totalBits;
+    while (bitsRemaining > 0) {
+        int currentPacketBits = (bitsRemaining >= packetSize) ? packetSize : bitsRemaining;
+        int framesForThisPacket = (currentPacketBits + frameSize - 1) / frameSize;
+        totalFrames += framesForThisPacket;
+        bitsRemaining -= currentPacketBits;
+    }
+
+    paddingBits = (frameSize - packetSize > 0) ? frameSize - packetSize : 0;
+
+    printf("\n=== FINAL SUMMARY ===\n");
+    printf("Total Message Payload Bits: %d bits\n", totalBits);
+    printf("Total Source Bits  : %d bits\n", sourceBits);
+    printf("Total Destination Bits    : %d bits\n", destinationBits);
+    printf("User Specified Packet Size : %d bits\n", packetSize);
+    printf("User Specified Frame Size  : %d bits\n", frameSize);
+    printf("Allocated Padding Per Frame: %d bits\n", paddingBits);
+    printf("----------------------------------------\n");
+    printf("TOTAL PACKETS GENERATED    : %d\n", totalPackets);
+    printf("TOTAL FRAMES GENERATED     : %d\n", totalFrames);
+    printf("----------------------------------------\n");
+}
+
+
+int main() {
+
+    char sourceWebsite[50];
+    char destinationWebsite[50];
+    int sourceIndex, destinationIndex;
+    int packetSize, frameSize;
+
+    char buffer[20] = "hi hello";
+    char binaryMessage[100];
+    struct TransportPacket segment;
+
+    srand(time(NULL));
+
+    printf("Enter Packet Size (in bits): ");
+    if(scanf("%d", &packetSize) != 1)
+       return 1;
+    printf("Enter Frame Size (in bits): ");
+    if(scanf("%d", &frameSize) != 1)
+       return 1;
+
+    printf("Enter Source Website: ");
+    if(scanf("%s", sourceWebsite) != 1)
+       return 1;
+    printf("Enter Destination Website: ");
+    if(scanf("%s", destinationWebsite) != 1)
+       return 1;
+
+    sourceIndex = findWebsite(sourceWebsite);
+    destinationIndex = findWebsite(destinationWebsite);
+
+    if(sourceIndex == -1 || destinationIndex == -1) {
+        printf("\nError: Invalid Website Selection.\n");
+        return 0;
+    }
+
+    applicationLayer(buffer, binaryMessage);
+    transportLayer(binaryMessage, &segment);
+    networkLayer(binaryMessage, segment, sourceIndex, destinationIndex, packetSize);
+    dataLinkLayer(binaryMessage, segment, sourceIndex, destinationIndex);
+    displaySummary(binaryMessage, segment, sourceIndex, destinationIndex, packetSize, frameSize);
+    return 0;
+}
