@@ -1,0 +1,193 @@
+#include <stdio.h>
+#define MAXSIZE 20
+int totalBits;
+int parityBits;
+int receivedCode[MAXSIZE];
+int syndromeBits[MAXSIZE];
+int i, j, p;
+int choice;
+int errorPosition;
+void readFile()
+{
+    FILE *fp;
+    int bit;
+    fp = fopen("out.txt", "r");
+    if(fp == NULL)
+    {
+        printf("Unable to open out.txt\n");
+        return;
+    }
+
+    totalBits = 0;
+    while(fscanf(fp,"%d",&bit)==1 && totalBits<MAXSIZE)
+    {
+        totalBits++;
+        receivedCode[totalBits]=bit;
+    }
+
+    fclose(fp);
+}
+
+
+void findParityBits()
+{
+    parityBits=0;
+
+    while((1<<parityBits)<=totalBits)
+    {
+        parityBits++;
+    }
+}
+void displayCodeword()
+{
+    printf("\nReceived Codeword:\n");
+
+    for(i=1;i<=totalBits;i++)
+        printf("%d ",receivedCode[i]);
+
+    printf("\n");
+}
+
+
+void flipBit()
+{
+    printf("\nEnter Bit Position to Flip (1-%d): ",totalBits);
+    scanf("%d",&errorPosition);
+
+    if(errorPosition>=1 && errorPosition<=totalBits)
+    {
+        receivedCode[errorPosition]^=1;
+
+        printf("\nCodeword After Error:\n");
+
+        for(i=1;i<=totalBits;i++)
+            printf("%d ",receivedCode[i]);
+
+        printf("\n");
+    }
+    else
+    {
+        printf("Invalid Position\n");
+    }
+}
+
+/* Verify Codeword */
+void verifyCode()
+{
+    int parityPos;
+    int paritySum;
+    int syndrome=0;
+
+    printf("\n========== PARITY CHECK ==========\n");
+
+    for(p=0;p<parityBits;p++)
+    {
+        parityPos=1<<p;
+        paritySum=0;
+
+        for(j=1;j<=totalBits;j++)
+        {
+            if(j & parityPos)
+            {
+                paritySum ^= receivedCode[j];
+            }
+        }
+
+        syndromeBits[p]=paritySum;
+
+        if(paritySum==0)
+            printf("P%d (Position %d) : Correct\n",parityPos,parityPos);
+        else
+            printf("P%d (Position %d) : Error\n",parityPos,parityPos);
+    }
+
+    printf("\n========== SYNDROME ==========\n");
+
+    printf("Binary Syndrome = ");
+
+    for(p=parityBits-1;p>=0;p--)
+    {
+        printf("%d",syndromeBits[p]);
+    }
+
+    printf("\n");
+
+    printf("\nBinary to Decimal Conversion:\n");
+
+    syndrome=0;
+
+    for(p=parityBits-1;p>=0;p--)
+    {
+        if(syndromeBits[p]==1)
+        {
+                  syndromeBits[p],
+                   p,
+                   (1<<p);
+
+            syndrome += (1<<p);
+        }
+    }
+
+    printf("-----------------------------\n");
+
+    printf("Decimal Value = %d\n",syndrome);
+
+    if(syndrome==0)
+    {
+        printf("\nNO ERROR DETECTED\n");
+    }
+    else
+    {
+        printf("\nERROR DETECTED\n");
+        printf("Error Position = %d\n",syndrome);
+
+        receivedCode[syndrome]^=1;
+
+        printf("\nCorrected Codeword:\n");
+
+        for(i=1;i<=totalBits;i++)
+            printf("%d ",receivedCode[i]);
+
+        printf("\n");
+    }
+}
+
+/* Display Original Data */
+void displayData()
+{
+    printf("\nOriginal Data Bits:\n");
+
+    for(i=1;i<=totalBits;i++)
+    {
+        if((i&(i-1))!=0)
+            printf("%d ",receivedCode[i]);
+    }
+
+    printf("\n");
+}
+
+int main()
+{
+    readFile();
+
+    findParityBits();
+
+    printf("\nData Read Successfully from out.txt\n");
+
+    displayCodeword();
+
+    printf("\nIntroduce Transmission Error?\n");
+    printf("1. Yes\n");
+    printf("2. No\n");
+    printf("Enter Choice: ");
+    scanf("%d",&choice);
+
+    if(choice==1)
+        flipBit();
+
+    verifyCode();
+
+    displayData();
+
+    return 0;
+}
