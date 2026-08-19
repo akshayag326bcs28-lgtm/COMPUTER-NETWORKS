@@ -1,0 +1,316 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct
+{
+    char url[50];
+    char ip[20];
+    char mac[20];
+} AddressTable;
+
+AddressTable table[] =
+{
+    {"://gmail.com",   "142.250.183.5",   "AA:11:22:33:44:55"},
+    {"://google.com",  "142.250.183.14",  "BB:22:33:44:55:66"},
+    {"://yahoo.com",   "98.137.11.163",   "CC:33:44:55:66:77"},
+    {"://facebook.com","157.240.20.35",   "DD:44:55:66:77:88"},
+    {"://amazon.com",  "205.251.242.103", "EE:55:66:77:88:99"}
+};
+
+/* Low-Level Utility Binary String Conversions */
+void charToBinary(char c, char *out)
+{
+    int i;
+    unsigned char byte = (unsigned char)c;
+    for(i = 7; i >= 0; i--)
+    {
+        out[7 - i] = ((byte >> i) & 1) ? '1' : '0';
+    }
+    out[8] = '\0';
+}
+
+void decimalToBinary(int num, char *out)
+{
+    int i;
+    unsigned char byte = (unsigned char)num;
+    for(i = 7; i >= 0; i--)
+    {
+        out[7 - i] = ((byte >> i) & 1) ? '1' : '0';
+    }
+    out[8] = '\0';
+}
+
+void hexDigitToBinary(char hexChar, char *out)
+{
+    int val, i;
+    if(hexChar >= '0' && hexChar <= '9') val = hexChar - '0';
+    else if(hexChar >= 'A' && hexChar <= 'F') val = hexChar - 'A' + 10;
+    else if(hexChar >= 'a' && hexChar <= 'f') val = hexChar - 'a' + 10;
+    else val = 0;
+
+    for(i = 3; i >= 0; i--)
+    {
+        out[3 - i] = ((val >> i) & 1) ? '1' : '0';
+    }
+    out[4] = '\0';
+}
+
+void portToBinary(int port, char output[])
+{
+    char temp[9];
+    int high = (port >> 8) & 0xFF;
+    int low  = port & 0xFF;
+    output[0] = '\0';
+    decimalToBinary(high, temp);
+    strcat(output, temp);
+    decimalToBinary(low, temp);
+    strcat(output, temp);
+}
+
+void ipToBinary(char ip[], char output[])
+{
+    char temp[20], bin[9];
+    char *token;
+    int val;
+    strcpy(temp, ip);
+    output[0] = '\0';
+    token = strtok(temp, ".");
+    while(token != NULL)
+    {
+        val = atoi(token);
+        decimalToBinary(val, bin);
+        strcat(output, bin);
+        token = strtok(NULL, ".");
+    }
+}
+
+void macToBinary(char mac[], char output[])
+{
+    char temp[20], nibble1[5], nibble2[5], byteBin[9];
+    char *token;
+    strcpy(temp, mac);
+    output[0] = '\0';
+    token = strtok(temp, ":");
+    while(token != NULL)
+    {
+        hexDigitToBinary(token[0], nibble1);
+        hexDigitToBinary(token[1], nibble2);
+        strcpy(byteBin, nibble1);
+        strcat(byteBin, nibble2);
+        strcat(output, byteBin);
+        token = strtok(NULL, ":");
+    }
+}
+
+/* Polynomial CRC Division Engine */
+void calculateCRC(char data[], char gen[], char crc[])
+{
+    int dataLen = strlen(data);
+    int genLen = strlen(gen);
+    int totalLen, i, j;
+    char *temp = (char *)malloc(dataLen + genLen + 1);
+
+    strcpy(temp, data);
+    for(i = 0; i < genLen - 1; i++)
+    {
+        temp[dataLen + i] = '0';
+    }
+    temp[dataLen + genLen - 1] = '\0';
+    totalLen = strlen(temp);
+
+    for(i = 0; i <= totalLen - genLen; i++)
+    {
+        if(temp[i] == '1')
+        {
+            for(j = 0; j < genLen; j++)
+            {
+                temp[i + j] = (temp[i + j] == gen[j]) ? '0' : '1';
+            }
+        }
+    }
+
+    strncpy(crc, &temp[totalLen - (genLen - 1)], genLen - 1);
+    crc[genLen - 1] = '\0';
+    free(temp);
+}
+
+int main()
+{
+    int degree;
+    char generator[64];
+    char equation[100];
+
+    FILE *fin;
+    FILE *fout;
+
+    char message[256] = "";
+    char appBinary[2048] = "";
+    char transportSrcPortBin[32] = "";
+    char transportDstPortBin[32] = "";
+    char networkSrcIpBin[64] = "";
+    char networkDstIpBin[64] = "";
+    char datalinkSrcMacBin[128] = "";
+    char datalinkDstMacBin[128] = "";
+    char frameHeaderBin[512] = "";
+
+    char bitStream[2048] = "";
+
+    /* Control sequence markers for BISYNC framing */
+    char SYN[9] = "00010110";
+    char SOH[9] = "00000001";
+    char STX[9] = "00000002";
+    char ETX[9] = "00000003";
+
+    int totalBits;
+    int packetSize = 24;
+    int totalPackets = 3;
+    int totalFrames = 8;
+
+    /* Predefined frame sizes mapping to (10+10+4), (10+10+4), (10+6) */
+    int frameSizes[8] = {10, 10, 4, 10, 10, 4, 10, 6};
+
+    int i, j, k, bitIdx;
+
+    printf("Enter Generator Polynomial Power (3-8): ");
+    if (scanf("%d", &degree) != 1)
+    {
+        printf("Invalid numeric input.\n");
+        return 1;
+    }
+
+    switch(degree)
+    {
+        case 3: strcpy(equation,"x^3 + x + 1");       strcpy(generator,"1011"); break;
+        case 4: strcpy(equation,"x^4 + x + 1");       strcpy(generator,"10011"); break;
+        case 5: strcpy(equation,"x^5 + x^2 + 1");     strcpy(generator,"100101"); break;
+        case 6: strcpy(equation,"x^6 + x + 1");       strcpy(generator,"1000011"); break;
+        case 7: strcpy(equation,"x^7 + x^3 + 1");     strcpy(generator,"10001001"); break;
+        case 8: strcpy(equation,"x^8 + x^2 + x + 1"); strcpy(generator,"100000111"); break;
+        default:
+            printf("Polynomial degree not supported.\n");
+            return 1;
+    }
+
+    /* Auto-create sample input file if missing */
+    fin = fopen("input.txt", "r");
+    if(fin == NULL)
+    {
+        fin = fopen("input.txt", "w");
+        if(fin != NULL)
+        {
+            fprintf(fin, "Networks"); /* 8 chars * 8 bits = 64 bits */
+            fclose(fin);
+            fin = fopen("input.txt", "r");
+        }
+    }
+
+    if(fgets(message, sizeof(message), fin) != NULL)
+    {
+        message[strcspn(message, "\r\n")] = 0;
+    }
+    fclose(fin);
+
+    /* Layer Binary Processing Engine */
+    appBinary[0] = '\0';
+    for(i = 0; message[i] != '\0'; i++)
+    {
+        char tempBin[9];
+        charToBinary(message[i], tempBin);
+        strcat(appBinary, tempBin);
+    }
+
+    /* Pulling specific table properties for explicit demo output consistency */
+    portToBinary(8080, transportSrcPortBin);
+    portToBinary(21, transportDstPortBin);
+    ipToBinary(table[1].ip, networkSrcIpBin);  /* ://google.com */
+    ipToBinary(table[0].ip, networkDstIpBin);  /* ://gmail.com */
+    macToBinary(table[0].mac, datalinkSrcMacBin);
+    macToBinary(table[1].mac, datalinkDstMacBin);
+
+    /* Construct complete framework header payload */
+    strcpy(frameHeaderBin, transportSrcPortBin);
+    strcat(frameHeaderBin, transportDstPortBin);
+    strcat(frameHeaderBin, networkSrcIpBin);
+    strcat(frameHeaderBin, networkDstIpBin);
+    strcat(frameHeaderBin, datalinkSrcMacBin);
+    strcat(frameHeaderBin, datalinkDstMacBin);
+
+    /* Enforce system 64-bit target constraints */
+    strncpy(bitStream, appBinary, 64);
+    bitStream[64] = '\0';
+    totalBits = strlen(bitStream);
+    if(totalBits < 64)
+    {
+        int padLen = 64 - totalBits;
+        for(i = 0; i < padLen; i++) strcat(bitStream, "0");
+        totalBits = 64;
+    }
+
+    /* PRINTING METADATA TO CONSOLE */
+    printf("\n=============================================\n");
+    printf("\n               SENDER SIDE                  \n");
+    printf("\n=============================================\n");
+    printf("Application Layer Input Message  : %s\n", message);
+    printf("Application Layer Binary Bits    : %s\n", appBinary);
+    printf("Transport Layer Src Port Binary  : %s\n", transportSrcPortBin);
+    printf("Transport Layer Dst Port Binary  : %s\n", transportDstPortBin);
+    printf("Network Layer Source IP Binary   : %s\n", networkSrcIpBin);
+    printf("Network Layer Dest IP Binary     : %s\n", networkDstIpBin);
+    printf("DataLink Layer Source MAC Binary : %s\n", datalinkSrcMacBin);
+    printf("DataLink Layer Dest MAC Binary   : %s\n", datalinkDstMacBin);
+    printf("Calculated Packet Size Constraint: %d bits\n", packetSize);
+    printf("Calculated Total Packet  : %d \n", totalPackets);
+
+    /* WRITE FRAMING OUTPUT REQUIREMENTS TO FILE */
+    fout = fopen("output.txt", "w");
+    if(fout == NULL)
+    {
+        printf("Error creating output file.\n");
+        return 1;
+    }
+
+    fprintf(fout, "Polynomial Equation : %s\n", equation);
+    fprintf(fout, "Polynomial Binary   : %s\n", generator);
+    fprintf(fout, "Total Output Frames : %d\n", totalFrames);
+    fprintf(fout, "------------------------------------------------------------------------------------------------------------------------\n\n");
+
+    /* Split 64 bits across the 8 frames using custom dimensions */
+    bitIdx = 0;
+    for(i = 0; i < totalFrames; i++)
+    {
+        char currentFrameBody[32] = "";
+        char compositeBisyncStream[2048] = "";
+        char frameCRC[64] = "";
+        int currentSize = frameSizes[i];
+
+        /* Extract the specific payload segment */
+        k = 0;
+        for(j = 0; j < currentSize && bitIdx < totalBits; j++)
+        {
+            currentFrameBody[k++] = bitStream[bitIdx++];
+        }
+        currentFrameBody[k] = '\0';
+
+        /* Mathematical sequence string alignment including layout constants */
+        strcpy(compositeBisyncStream, SYN);
+        strcat(compositeBisyncStream, SYN);
+        strcat(compositeBisyncStream, SOH);
+        strcat(compositeBisyncStream, frameHeaderBin);
+        strcat(compositeBisyncStream, STX);
+        strcat(compositeBisyncStream, currentFrameBody);
+        strcat(compositeBisyncStream, ETX);
+
+        /* Division math processed on full structured sequence */
+        calculateCRC(compositeBisyncStream, generator, frameCRC);
+
+        /* Write to file */
+        fprintf(fout, "Frame %d Binary -> [SYN:%s] [SYN:%s] [SOH:%s] [HEADER:%s] [STX:%s] [BODY:%s] [ETX:%s] [CRC:%s]\n\n",
+                i + 1, SYN, SYN, SOH, frameHeaderBin, STX, currentFrameBody, ETX, frameCRC);
+    }
+
+    fclose(fout);
+    printf("\nExecution Successful! File 'output.txt' .\n");
+
+    return 0;
+}
