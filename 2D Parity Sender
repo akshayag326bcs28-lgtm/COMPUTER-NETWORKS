@@ -1,0 +1,129 @@
+#include <stdio.h>
+#define SIZE 10
+int rows, cols;
+int data[SIZE][SIZE];
+int rowParity[SIZE];
+int colParity[SIZE];
+int cornerParity;
+void inputData()
+{
+    int i,j;
+    printf("Enter number of rows: ");
+    scanf("%d",&rows);
+    printf("Enter number of columns: ");
+    scanf("%d",&cols);
+    printf("Enter binary data:\n");
+    for(i=0;i<rows;i++)
+    {
+        for(j=0;j<cols;j++)
+        {
+            scanf("%d",&data[i][j]);
+        }
+    }
+}
+void calculateParity()
+{
+    int i,j;
+    int temp;
+    // Row parity
+    for(i=0;i<rows;i++)
+    {
+        temp=0;
+
+        for(j=0;j<cols;j++)
+        {
+            temp ^= data[i][j];
+        }
+
+        rowParity[i]=temp;
+    }
+    // Column parity
+    for(j=0;j<cols;j++)
+    {
+        temp=0;
+
+        for(i=0;i<rows;i++)
+        {
+            temp ^= data[i][j];
+        }
+
+        colParity[j]=temp;
+    }
+    // Corner parity
+    cornerParity=0;
+    for(j=0;j<cols;j++)
+    {
+        cornerParity ^= colParity[j];
+    }
+
+}
+void display()
+{
+    int i,j;
+    printf("\nTransmitted Block\n\n");
+    for(i=0;i<rows;i++)
+    {
+        for(j=0;j<cols;j++)
+        {
+            printf("%d ",data[i][j]);
+        }
+
+        printf("| %d\n",rowParity[i]);
+    }
+    for(j=0;j<cols;j++)
+        printf("--");
+
+    printf("---\n");
+    for(j=0;j<cols;j++)
+    {
+        printf("%d ",colParity[j]);
+    }
+    printf("| %d\n",cornerParity);
+
+}
+void writeFile()
+{
+    FILE *fp;
+    int i,j;
+    fp=fopen("channel.dat","w");
+    if(fp==NULL)
+    {
+        printf("File creation failed");
+        return;
+    }
+    // Store rows and columns
+
+    fprintf(fp,"%d %d\n",rows,cols);
+    // Store data bits
+    for(i=0;i<rows;i++)
+    {
+        for(j=0;j<cols;j++)
+        {
+            fprintf(fp,"%d ",data[i][j]);
+        }
+
+        fprintf(fp,"%d\n",rowParity[i]);
+    }
+    // Store column parity
+    for(j=0;j<cols;j++)
+    {
+        fprintf(fp,"%d ",colParity[j]);
+    }
+    fprintf(fp,"%d\n",cornerParity);
+    fclose(fp);
+    printf("\nData written into channel.dat successfully\n");
+}
+int main()
+{
+
+    inputData();
+
+    calculateParity();
+
+    display();
+
+    writeFile();
+
+
+    return 0;
+}
