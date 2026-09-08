@@ -1,0 +1,89 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 3000
+#define SIZE 1024
+#define MAX 50
+
+int sfd, cfd;
+struct sockaddr_in saddr, caddr;
+socklen_t clen = sizeof(caddr);
+char rbuf[SIZE], sbuf[SIZE];
+char ip[MAX][20] = {"192.168.1.1", "192.168.1.2", "192.168.1.3"};
+char mac[MAX][20] = {"AA:AA:AA:AA:AA:01", "AA:AA:AA:AA:AA:02", "AA:AA:AA:AA:AA:03"};
+int count = 3;
+
+int main() {
+
+    sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sfd == -1) {
+        perror("socket failed");
+        exit(1);
+    }
+
+    saddr.sin_family = AF_INET;
+    saddr.sin_port = htons(PORT);
+    saddr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sfd, (struct sockaddr*)&saddr, sizeof(saddr)) < 0) {
+        perror("bind failed");
+        close(sfd);
+        exit(1);
+    }
+
+    if (listen(sfd, 3) < 0) {
+        perror("listen failed");
+        close(sfd);
+        exit(1);
+    }
+    printf("ARP Server listening on port %d...\n", PORT);
+
+    cfd = accept(sfd, (struct sockaddr*)&caddr, &clen);
+    if (cfd < 0) {
+        perror("accept failed");
+        close(sfd);
+        exit(1);
+    }
+    printf("Client connected.\n");
+
+    while (1) {
+        int n = recv(cfd, rbuf, SIZE - 1, 0);
+        if (n <= 0) {
+            printf("Client disconnected.\n");
+            break;
+        }
+        rbuf[n] = '\0';
+        printf("ARP Request for IP: %s\n", rbuf);
+
+        if (strcmp(rbuf, "exit") == 0) break;
+
+        int found = -1;
+        int i;
+        for (i = 0; i < count; i++) {
+            if (strcmp(rbuf, ip[i]) == 0) {
+                found = i;
+                break;
+            }
+        }
+
+        if (found != -1) {
+            sprintf(sbuf, "Found. MAC: %s", mac[found]);
+            printf("Existing entry, MAC: %s\n", mac[found]);
+        } else {
+            strcpy(ip[count], rbuf);
+            sprintf(mac[count], "AA:AA:AA:AA:AA:%02d", count + 1);
+            sprintf(sbuf, "Not Found. New entry added. MAC: %s", mac[count]);
+            printf("IP not found. Added new entry -> %s : %s\n", ip[count], mac[count]);
+            count++;
+        }
+
+        send(cfd, sbuf, strlen(sbuf), 0);
+    }
+
+    close(cfd);
+    close(sfd);
+    return 0;
+}
