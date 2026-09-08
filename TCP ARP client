@@ -1,0 +1,65 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+
+#define SIZE 1024
+char *IP;
+int PORT;
+int sfd;
+struct sockaddr_in saddr;
+char sbuf[SIZE], rbuf[SIZE];
+
+int main(int argc,char* argv[]) {
+    if (argc != 3)
+    {
+        printf("Error: two arguments are needed\n", argv[0]);
+        exit(1);
+    }
+
+    IP = argv[1];
+    PORT=atoi(argv[2]);
+    sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sfd < 0) {
+        perror("socket failed");
+        exit(1);
+    }
+
+    saddr.sin_family = AF_INET;
+    saddr.sin_port = htons(PORT);
+
+    if (inet_pton(AF_INET, IP, &saddr.sin_addr) <= 0) {
+        perror("invalid address");
+        close(sfd);
+        exit(1);
+    }
+
+    if (connect(sfd, (struct sockaddr*)&saddr, sizeof(saddr)) < 0) {
+        perror("connect failed");
+        close(sfd);
+        exit(1);
+    }
+    printf("Connected to ARP server at %s:%d\n", IP, PORT);
+
+    while (1) {
+        printf("\nEnter IP address to resolve (or 'exit' to quit): ");
+        scanf("%s", sbuf);
+
+        send(sfd, sbuf, strlen(sbuf), 0);
+
+        if (strcmp(sbuf, "exit") == 0) break;
+
+        int n = recv(sfd, rbuf, SIZE - 1, 0);
+        if (n <= 0) {
+            printf("Server disconnected.\n");
+            break;
+        }
+        rbuf[n] = '\0';
+        printf("%s\n", rbuf);
+    }
+
+    close(sfd);
+    return 0;
+}
