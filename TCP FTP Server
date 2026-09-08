@@ -1,0 +1,87 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8080
+#define SIZE 1024
+
+int sfd, cfd;
+struct sockaddr_in saddr, caddr;
+socklen_t clen = sizeof(caddr);
+char rbuf[SIZE], sbuf[SIZE];
+FILE *fp;
+
+int main() {
+    sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sfd == -1) {
+        perror("socket failed");
+        exit(1);
+    }
+
+    saddr.sin_family = AF_INET;
+    saddr.sin_port = htons(PORT);
+    saddr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sfd, (struct sockaddr*)&saddr, sizeof(saddr)) < 0) {
+        perror("bind failed");
+        close(sfd);
+        exit(1);
+    }
+
+    if (listen(sfd, 3) < 0) {
+        perror("listen failed");
+        close(sfd);
+        exit(1);
+    }
+    printf("File server listening on port %d...\n", PORT);
+
+    cfd = accept(sfd, (struct sockaddr*)&caddr, &clen);
+    if (cfd < 0) {
+        perror("accept failed");
+        close(sfd);
+        exit(1);
+    }
+    printf("Client connected.\n");
+
+    while (1) {
+        int n = recv(cfd, rbuf, SIZE - 1, 0);
+        if (n <= 0) {
+            printf("Client disconnected.\n");
+            break;
+        }
+        rbuf[n] = '\0';
+        printf("Requested file: %s\n", rbuf);
+
+        if (strcmp(rbuf, "exit") == 0) break;
+
+        fp = fopen(rbuf, "r");
+        if (fp == NULL) {
+            strcpy(sbuf, "File not available");
+            send(cfd, sbuf, strlen(sbuf), 0);
+            printf("File not found, notified client.\n");
+            continue;
+        }
+
+        // Send OK marker first so client knows file exists
+        strcpy(sbuf, "FOUND");
+        send(cfd, sbuf, strlen(sbuf), 0);
+
+        // Send file content in chunks
+        int len;
+        while ((len = fread(sbuf, 1, SIZE, fp)) > 0) {
+            send(cfd, sbuf, len, 0);
+            usleep(10000); // small delay to avoid merging with EOF marker
+        }
+        fclose(fp);
+
+        // Send end marker
+        send(cfd, "<END>", 5, 0);
+        printf("File sent successfully.\n");
+    }
+
+    close(cfd);
+    close(sfd);
+    return 0;
+}
